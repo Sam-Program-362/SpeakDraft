@@ -6,10 +6,21 @@ package com.speakdraft.app
  * This is the single, narrow application-facing interface to the native
  * whisper.cpp engine. UI and document-editing code must never call into it
  * directly except through [com.speakdraft.app.domain.speech.WhisperEngine].
+ *
+ * The native library is loaded defensively: if `System.loadLibrary` fails
+ * (missing .so for the device ABI, 16 KB page-size misalignment, etc.), the
+ * object still initializes with [isLoaded] = false instead of throwing from
+ * `init` (which would leave the class in an erroneous state and crash the
+ * app on launch). Callers must check [isLoaded] before invoking native
+ * methods; [com.speakdraft.app.domain.speech.WhisperEngine] does.
  */
 object WhisperNative {
-    init {
+
+    val isLoaded: Boolean = try {
         System.loadLibrary("whisper_jni")
+        true
+    } catch (e: UnsatisfiedLinkError) {
+        false
     }
 
     /** Loads the model at [modelPath]; returns an opaque native context pointer (0 on failure). */

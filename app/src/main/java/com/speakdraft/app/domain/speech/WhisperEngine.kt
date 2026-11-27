@@ -34,6 +34,11 @@ class WhisperEngine(private val context: Context) {
         withContext(Dispatchers.IO) {
             mutex.withLock {
                 if (contextPtr != 0L) return@withLock
+                if (!WhisperNative.isLoaded) {
+                    throw IllegalStateException(
+                        "Native whisper library failed to load on this device"
+                    )
+                }
                 val model = extractModel()
                 val ptr = WhisperNative.createContext(model.absolutePath)
                 if (ptr == 0L) {
