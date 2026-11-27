@@ -1,0 +1,28 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+.playwright-cli/
+
+# Android & Gradle
+.gradle/
+local.properties
+app/build/
+release-artifacts/
+*.apk
+*.aab
+*.idsig
+
+# Signing Keystores (never commit credentials; inject via GitHub Secrets)
+*.jks
+*.keystore
+*.b64
+*.base64.txt
+
+# Local Whisper ggml model artifacts (~141.11 MB ggml-base.en.bin)
+*.bin
+

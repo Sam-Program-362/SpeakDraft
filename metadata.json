@@ -1,0 +1,6 @@
+{
+  "name": "WhisperNote Offline Android & CI/CD Repository",
+  "description": "Offline English speech transcription Android architecture powered by whisper.cpp (base.en) with non-destructive transcript editing and automated GitHub Actions APK signing & v-tag release workflows.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
