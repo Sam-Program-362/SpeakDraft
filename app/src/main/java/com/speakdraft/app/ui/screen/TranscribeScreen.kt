@@ -98,13 +98,20 @@ fun TranscribeScreen(viewModel: TranscribeViewModel) {
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = {
-                if (state.isRecording) {
-                    viewModel.toggleRecording()
-                } else {
-                    permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                }
-            }) {
+            // Disabled while transcribing or while the model is still loading:
+            // starting a second record/transcribe cycle would race the native
+            // whisper context (use-after-free / overlapping inference).
+            val recordEnabled = !state.isProcessing && (state.modelReady || state.isRecording)
+            FloatingActionButton(
+                onClick = {
+                    if (state.isRecording) {
+                        viewModel.toggleRecording()
+                    } else {
+                        permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    }
+                },
+                enabled = recordEnabled
+            ) {
                 Icon(
                     imageVector = if (state.isRecording) Icons.Filled.Stop else Icons.Filled.Mic,
                     contentDescription = if (state.isRecording) "Stop recording" else "Start recording"

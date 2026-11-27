@@ -1,10 +1,16 @@
 # =============================================================================
 # release-apk.yml
 # -----------------------------------------------------------------------------
-# Triggered by pushing a tag that starts with "v" (e.g. v1.0.0, v1.2.3-beta).
+# Builds a SIGNED release APK and attaches it to a GitHub Release.
 #
-# It builds a SIGNED release APK exactly like build-apk.yml, then creates a
-# GitHub Release for the tag and attaches the signed APK as a release asset.
+# This workflow fires on ALL THREE release paths:
+#   1. push of a tag matching "v*" (e.g. v1.0.0, v1.2.3-beta)
+#   2. publishing a GitHub Release (release event: published/released)
+#      -- this is the path taken when you create a release from the GitHub
+#         UI or `gh release create` on an EXISTING tag: no tag push happens,
+#         only a `release` event. (Previously this workflow only listened
+#         for tag pushes, so publishing a release did nothing.)
+#   3. manual dispatch (Actions tab), with an optional tag_name input.
 #
 # Signing uses the same four repository secrets:
 #   - KEYSTORE_BASE64
@@ -12,9 +18,8 @@
 #   - KEY_ALIAS
 #   - KEY_PASSWORD
 #
-# Because a published release must be signed, this workflow FAILS if
-# KEYSTORE_BASE64 is not configured (unlike build-apk.yml, which also fails
-# when the secret is missing, but here it is a hard requirement for the asset).
+# A published release MUST be signed, so this workflow FAILS if
+# KEYSTORE_BASE64 is not configured.
 # =============================================================================
 name: Release Signed APK
 
@@ -22,6 +27,14 @@ on:
   push:
     tags:
       - "v*"
+  release:
+    types: [published, released]
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Tag to build and attach the APK to (defaults to the selected ref)"
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -38,37 +51,70 @@ jobs:
     timeout-minutes: 60
 
     steps:
+      - name: Resolve release tag
+        id: tag
+        env:
+          EVENT_RELEASE_TAG: ${{ github.event.release.tag_name }}
+          INPUT_TAG: ${{ inputs.tag_name }}
+        run: |
+          set -euo pipefail
+          TAG="${INPUT_TAG:-}"
+          if [ -z "$TAG" ]; then TAG="${EVENT_RELEASE_TAG:-}"; fi
+          if [ -z "$TAG" ]; then TAG="${GITHUB_REF_NAME:-}"; fi
+          if [ -z "$TAG" ]; then
+            echo "::error::Could not resolve a release tag." >&2
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Release tag: $TAG"
+
       - name: Checkout repository (with submodules)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
+          ref: ${{ steps.tag.outputs.tag }}
           submodules: recursive
           lfs: false
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      # NOTE: ubuntu-latest runners already ship the Android SDK under
+      # $ANDROID_HOME (/usr/local/lib/android/sdk). The third-party
+      # android-actions/setup-android action is intentionally NOT used:
+      # it fails on current runners (Node.js 24 runtime, exit 127).
+      - name: Install Android SDK components (platform, build-tools, NDK, CMake)
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | head -n1)"
+          fi
+          echo "Using sdkmanager: $SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" "platforms;android-34" "build-tools;34.0.0" "ndk;25.2.9519653" "cmake;3.22.1"
 
-      - name: Accept Android SDK licenses
-        run: yes | sdkmanager --licenses || true
-
-      - name: Install NDK and CMake
-        run: sdkmanager "ndk;25.2.9519653" "cmake;3.22.1"
+      - name: Cache Gradle
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Decode signing keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
+          set -euo pipefail
           mkdir -p keystore
-          if [ -z "$KEYSTORE_BASE64" ]; then
+          if [ -z "${KEYSTORE_BASE64:-}" ]; then
             echo "::error::KEYSTORE_BASE64 secret is required to build a signed release APK." >&2
             exit 1
           fi
-          echo "$KEYSTORE_BASE64" | base64 -d > keystore/release.keystore
+          # Tolerate trailing newlines/spaces from copy-paste.
+          printf '%s' "$KEYSTORE_BASE64" | tr -d ' \r\n' | base64 --decode > keystore/release.keystore
+          if [ ! -s keystore/release.keystore ]; then
+            echo "::error::Decoded keystore is empty. Check the KEYSTORE_BASE64 secret." >&2
+            exit 1
+          fi
           echo "KEYSTORE_FILE=${GITHUB_WORKSPACE}/keystore/release.keystore" >> "$GITHUB_ENV"
           echo "Release keystore decoded."
 
@@ -78,16 +124,34 @@ jobs:
       - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
 
+      - name: Run unit tests
+        run: ./gradlew testDebugUnitTest --no-daemon --stacktrace
+
       - name: Build release APK
         run: ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Verify APK signature
+        run: |
+          set -euo pipefail
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort | tail -n1)"
+          APK="$(ls app/build/outputs/apk/release/*.apk | head -n1)"
+          echo "Verifying signature of $APK"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
 
       - name: Create GitHub Release and attach APK
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          name: SpeakDraft ${{ github.ref_name }}
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: SpeakDraft ${{ steps.tag.outputs.tag }}
           generate_release_notes: true
           files: |
             app/build/outputs/apk/release/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Securely shred temporary keystore
+        if: always()
+        run: |
+          if [ -f keystore/release.keystore ]; then
+            shred -u keystore/release.keystore || rm -f keystore/release.keystore
+          fi
