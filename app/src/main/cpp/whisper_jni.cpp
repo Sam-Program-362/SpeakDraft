@@ -20,6 +20,9 @@ Java_com_speakdraft_app_WhisperNative_createContext(JNIEnv* env, jobject /*thiz*
     }
 
     struct whisper_context_params cparams = whisper_context_default_params();
+    // Android has no GPU compute backend in this build; force CPU inference
+    // so whisper_init never enters a GPU backend init path.
+    cparams.use_gpu = false;
     struct whisper_context* ctx = whisper_init_from_file_with_params(path, cparams);
 
     env->ReleaseStringUTFChars(model_path, path);
