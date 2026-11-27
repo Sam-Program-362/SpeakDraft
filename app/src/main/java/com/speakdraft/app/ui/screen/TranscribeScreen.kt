@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -46,6 +47,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.speakdraft.app.ui.theme.ThemeMode
@@ -101,16 +103,19 @@ fun TranscribeScreen(viewModel: TranscribeViewModel) {
             // Disabled while transcribing or while the model is still loading:
             // starting a second record/transcribe cycle would race the native
             // whisper context (use-after-free / overlapping inference).
+            // Material3's FloatingActionButton has no `enabled` parameter, so
+            // the click is a no-op and the button is dimmed while disabled.
             val recordEnabled = !state.isProcessing && (state.modelReady || state.isRecording)
             FloatingActionButton(
                 onClick = {
+                    if (!recordEnabled) return@FloatingActionButton
                     if (state.isRecording) {
                         viewModel.toggleRecording()
                     } else {
                         permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                     }
                 },
-                enabled = recordEnabled
+                modifier = Modifier.alpha(if (recordEnabled) 1f else 0.5f)
             ) {
                 Icon(
                     imageVector = if (state.isRecording) Icons.Filled.Stop else Icons.Filled.Mic,
