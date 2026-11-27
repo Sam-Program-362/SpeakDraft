@@ -111,7 +111,18 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Run unit tests
-        run: ./gradlew testDebugUnitTest --no-daemon --stacktrace
+        run: |
+          set +e
+          ./gradlew testDebugUnitTest --no-daemon --stacktrace > gradle-test.log 2>&1
+          CODE=$?
+          tail -n 60 gradle-test.log
+          if [ $CODE -ne 0 ]; then
+            echo "--- Gradle failure summary ---"
+            grep -E "FAILED|error:|e: |Exception|What went wrong|Execution failed" gradle-test.log | head -n 40 | while IFS= read -r line; do
+              echo "::error::$line"
+            done
+            exit $CODE
+          fi
 
       - name: Build release APK (signed when keystore is present)
         run: ./gradlew assembleRelease --no-daemon --stacktrace
