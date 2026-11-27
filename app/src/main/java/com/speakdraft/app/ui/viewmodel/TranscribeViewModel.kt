@@ -62,7 +62,11 @@ class TranscribeViewModel(application: Application) : AndroidViewModel(applicati
 
     /** Starts or stops a recording depending on current state. */
     fun toggleRecording() {
-        if (_uiState.value.isRecording) stopAndTranscribe() else startRecording()
+        val state = _uiState.value
+        // Never start a second record/transcribe cycle while one is running:
+        // overlapping inference would race the native whisper context.
+        if (state.isProcessing) return
+        if (state.isRecording) stopAndTranscribe() else startRecording()
     }
 
     private fun startRecording() {

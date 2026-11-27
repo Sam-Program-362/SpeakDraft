@@ -38,14 +38,28 @@ android {
     // Signing reads from the environment. CI provides these via the
     // KEYSTORE_* secrets; local developers can set them in ~/.gradle/gradle.properties.
     // If KEYSTORE_FILE is absent, release builds are NOT signed (debug-only use).
+    // When KEYSTORE_FILE is present, all four values are required; a missing
+    // one fails the build with a clear message instead of a cryptic signing error.
     signingConfigs {
         create("release") {
             val keystoreFile = System.getenv("KEYSTORE_FILE")
             if (!keystoreFile.isNullOrBlank()) {
+                val keystorePassword = System.getenv("KEYSTORE_PASSWORD")
+                val keyAlias = System.getenv("KEY_ALIAS")
+                val keyPassword = System.getenv("KEY_PASSWORD")
+                check(!keystorePassword.isNullOrBlank()) {
+                    "KEYSTORE_PASSWORD is required when KEYSTORE_FILE is set"
+                }
+                check(!keyAlias.isNullOrBlank()) {
+                    "KEY_ALIAS is required when KEYSTORE_FILE is set"
+                }
+                check(!keyPassword.isNullOrBlank()) {
+                    "KEY_PASSWORD is required when KEYSTORE_FILE is set"
+                }
                 storeFile = File(keystoreFile)
-                storePassword = System.getenv("KEYSTORE_PASSWORD")
-                keyAlias = System.getenv("KEY_ALIAS")
-                keyPassword = System.getenv("KEY_PASSWORD")
+                storePassword = keystorePassword
+                this.keyAlias = keyAlias
+                this.keyPassword = keyPassword
             }
         }
     }
@@ -79,8 +93,16 @@ android {
     }
 
     composeOptions {
-        // Pairs with Kotlin 1.9.22.
+        // Pairs with Kotlin 1.9.24 (see root build.gradle.kts).
         kotlinCompilerExtensionVersion = "1.5.14"
+    }
+
+    androidResources {
+        // The 141 MB ggml-base.en.bin model must be stored uncompressed in
+        // the APK (it is memory-mapped by whisper.cpp). Without this,
+        // aapt2 compresses it and the app pays a huge inflate cost on
+        // first launch (and extraction can fail on low-storage devices).
+        noCompress += "bin"
     }
 
     externalNativeBuild {
@@ -108,7 +130,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.3")
     implementation("androidx.activity:activity-compose:1.9.0")
 
-    // Compose 1.5.x line (aligned with Kotlin 1.9.22 + Compose compiler 1.5.14).
+    // Compose 1.5.x line (aligned with Kotlin 1.9.24 + Compose compiler 1.5.14).
     implementation(platform("androidx.compose:compose-bom:2023.10.01"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")

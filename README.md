@@ -81,8 +81,14 @@ Two GitHub Actions workflows live in `.github/workflows/`:
 
 | Workflow | File | Trigger | Result |
 | --- | --- | --- | --- |
-| Build Signed APK | `build-apk.yml` | push to `main`/`develop`, or manual dispatch | uploads signed `app-release.apk` as an artifact |
-| Release Signed APK | `release-apk.yml` | push of a tag `v*` (e.g. `v1.0.0`) | builds the signed APK and attaches it to a GitHub Release |
+| Build Signed APK | `build-apk.yml` | push to `main`/`develop`, pull requests, or manual dispatch | uploads signed `app-release.apk` as an artifact (unsigned debug APK on PRs from forks, where secrets are unavailable) |
+| Release Signed APK | `release-apk.yml` | push of a tag `v*` (e.g. `v1.0.0`), publishing a GitHub Release, or manual dispatch | builds the signed APK and attaches it to a GitHub Release |
+
+> **Note on the existing `v1.0.0` tag:** it still points to a pre-merge commit
+> that predates the current workflows. To attach an APK to the existing
+> `v1.0.0` release, either retarget the tag to `main` HEAD
+> (`git push origin main:refs/tags/v1.0.0 --force`) and re-publish, or run
+> **Release Signed APK** from the Actions tab with `tag_name = v1.0.0`.
 
 ### Required repository secrets
 
@@ -109,13 +115,21 @@ base64 -w0 release.keystore > release.keystore.b64
 
 ### Cutting a release
 
+Either push a version tag:
+
 ```bash
 git tag v1.0.0
 git push origin v1.0.0
 ```
 
-`release-apk.yml` checks out (with submodules), decodes the keystore, downloads the
-model, builds the signed APK, and attaches it to a GitHub Release created for the
+or create the release from the GitHub UI / `gh release create v1.0.0`. Both paths
+trigger `release-apk.yml` (tag push **and** the `release` published event — the
+latter is what fires when you publish a release on an existing tag). You can also
+run the workflow manually from the Actions tab with an optional `tag_name`.
+
+`release-apk.yml` checks out the tagged commit (with submodules), decodes the
+keystore, downloads the model, runs unit tests, builds the signed APK, verifies
+its signature with `apksigner`, and attaches it to the GitHub Release for the
 tag (release notes are generated automatically).
 
 ## Testing
