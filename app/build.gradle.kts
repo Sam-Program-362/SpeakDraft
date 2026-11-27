@@ -93,10 +93,12 @@ android {
     }
 
     composeOptions {
-        // Pairs with Kotlin 1.9.24 (see root build.gradle.kts).
-        // 1.6.11 aligns with activity-compose 1.9.0 + lifecycle 2.8.3,
-        // which were built against Compose 1.6.11 (see BOM below).
-        kotlinCompilerExtensionVersion = "1.6.11"
+        // 1.5.14 is the documented pairing for Kotlin 1.9.24.
+        // NOTE: this is the Compose COMPILER version, not the runtime
+        // version — the 1.6.x compiler line never existed (the compiler
+        // moved into Kotlin 2.0). The runtime version comes from the BOM
+        // below and is independent.
+        kotlinCompilerExtensionVersion = "1.5.14"
     }
 
     androidResources {
@@ -132,10 +134,13 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.3")
     implementation("androidx.activity:activity-compose:1.9.0")
 
-    // Compose 1.6.11 line. activity-compose 1.9.0 and lifecycle 2.8.3 were
-    // built against Compose 1.6.11; the older BOM 2023.10.01 (Compose 1.5.3)
-    // caused NoSuchMethodError crashes on launch because those libraries call
-    // 1.6.x runtime APIs that do not exist in 1.5.3.
+    // Compose runtime 1.6.8 line (BOM 2024.06.00). lifecycle-*-compose 2.8.x
+    // was compiled against Compose 1.6+/1.7-alpha and crashes with
+    // NoSuchMethodError at first composition when the runtime is older
+    // (lifecycle 2.8.1+ restored compatibility with the 1.6.x line), so the
+    // runtime must be >= 1.6.x. The Compose compiler stays at 1.5.14
+    // (Kotlin 1.9.24 pairing) — older-compiler code runs fine on a newer
+    // runtime.
     implementation(platform("androidx.compose:compose-bom:2024.06.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
